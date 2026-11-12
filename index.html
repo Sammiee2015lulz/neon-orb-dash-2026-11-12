@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Orb Dash - Daily Fun Game</title>
+<style>
+body { margin:0; background:#0a0a1a; color:#0ff; font-family: 'Courier New', monospace; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; overflow:hidden; }
+canvas { border: 2px solid #0ff; box-shadow: 0 0 20px #0ff; background: radial-gradient(#1a1a3a, #0a0a1a); }
+h1 { text-shadow: 0 0 10px #0ff; margin:10px; }
+#score { font-size:24px; text-shadow: 0 0 5px #0ff; }
+#instructions { position:absolute; bottom:20px; text-align:center; opacity:0.7; }
+</style>
+</head>
+<body>
+<h1>Neon Orb Dash</h1>
+<div id="score">Score: 0 | High: 0</div>
+<canvas id="game" width="800" height="500"></canvas>
+<div id="instructions">Arrow keys or WASD to move | Collect cyan orbs | Avoid red bombs!</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let score = 0;
+let highScore = localStorage.getItem('orbDashHigh') || 0;
+let player = { x: 400, y: 250, r: 20, speed: 5, color: '#0ff' };
+let orbs = [];
+let bombs = [];
+let keys = {};
+let particles = [];
+
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+function spawnOrb() {
+  orbs.push({
+    x: Math.random() * (canvas.width - 40) + 20,
+    y: Math.random() * (canvas.height - 40) + 20,
+    r: 10,
+    color: `hsl(${Math.random()*60 + 180}, 100%, 50%)`,
+    life: 300
+  });
+}
+
+function spawnBomb() {
+  bombs.push({
+    x: Math.random() * canvas.width,
+    y: -20,
+    r: 15,
+    vy: 2 + Math.random()*3,
+    color: '#f00'
+  });
+}
+
+function update() {
+  // Player movement
+  if (keys['ArrowLeft'] || keys['a']) player.x -= player.speed;
+  if (keys['ArrowRight'] || keys['d']) player.x += player.speed;
+  if (keys['ArrowUp'] || keys['w']) player.y -= player.speed;
+  if (keys['ArrowDown'] || keys['s']) player.y += player.speed;
+  player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
+  player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
+
+  // Orbs
+  for (let i = orbs.length - 1; i >= 0; i--) {
+    orbs[i].life--;
+    if (orbs[i].life <= 0) { orbs.splice(i, 1); continue; }
+    let dx = player.x - orbs[i].x;
+    let dy = player.y - orbs[i].y;
+    if (Math.hypot(dx, dy) < player.r + orbs[i].r) {
+      score += 10;
+      // Particles
+      for (let p = 0; p < 15; p++) {
+        particles.push({
+          x: orbs[i].x, y: orbs[i].y,
+          vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8,
+          life: 30, color: orbs[i].color
+        });
+      }
+      orbs.splice(i, 1);
+    }
+  }
+
+  // Bombs
+  for (let i = bombs.length - 1; i >= 0; i--) {
+    bombs[i].y += bombs[i].vy;
+    if (bombs[i].y > canvas.height + 20) { bombs.splice(i, 1); continue; }
+    let dx = player.x - bombs[i].x;
+    let dy = player.y - bombs[i].y;
+    if (Math.hypot(dx, dy) < player.r + bombs[i].r) {
+      // Game over
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('orbDashHigh', highScore);
+      }
+      alert(`Game Over! Score: ${score}\nHigh Score: ${highScore}`);
+      score = 0;
+      orbs = [];
+      bombs = [];
+      particles = [];
+      player.x = 400; player.y = 250;
+      return;
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].x += particles[i].vx;
+    particles[i].y += particles[i].vy;
+    particles[i].life--;
+    if (particles[i].life <= 0) particles.splice(i, 1);
+  }
+
+  if (Math.random() < 0.03) spawnOrb();
+  if (Math.random() < 0.02) spawnBomb();
+
+  document.getElementById('score').textContent = `Score: ${score} | High: ${highScore}`;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Glow player
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = player.color;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI*2);
+  ctx.fillStyle = player.color;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Orbs
+  orbs.forEach(o => {
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = o.color;
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, o.r, 0, Math.PI*2);
+    ctx.fillStyle = o.color;
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+
+  // Bombs
+  bombs.forEach(b => {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+    ctx.fillStyle = b.color;
+    ctx.fill();
+    // spikes
+    for (let a = 0; a < 8; a++) {
+      let ang = a * Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(b.x + Math.cos(ang)*b.r, b.y + Math.sin(ang)*b.r);
+      ctx.lineTo(b.x + Math.cos(ang)*(b.r+8), b.y + Math.sin(ang)*(b.r+8));
+      ctx.strokeStyle = '#f00';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  });
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 30;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
